@@ -216,11 +216,11 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                     else: 
                         print('Extracting stats from {} mask within {} contrast'.format(mask_opts[r], c))
                         # z-stats copes file
-                        zcope_file = glob.glob(op.join(modelDir, '*{}_zstat.nii.gz'.format(c)))
+                        zcope_file = glob.glob(op.join(modelDir, '*_{}_zstat.nii.gz'.format(c)))
                         zcope_img = image.load_img(zcope_file)
                         
                         # t-stats copes file
-                        tcope_file = glob.glob(op.join(modelDir, '*{}_tstat.nii.gz'.format(c)))
+                        tcope_file = glob.glob(op.join(modelDir, '*_{}_tstat.nii.gz'.format(c)))
                         tcope_img = image.load_img(tcope_file)
                         
                         # squeeze the statistical map to remove the 4th singleton dimension if using anatomical/atlas ROI
