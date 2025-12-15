@@ -23,7 +23,7 @@ from nilearn import masking
 import nilearn
 import shutil
 
-def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_opts, splithalves, search_spaces, match_events, template, top_nvox):
+def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_opts, splithalves, search_spaces, match_events, template, top_nvox, percent):
 
     # define search spaces dictionary
     roi_dict = {'lEBA':'body', 'rEBA':'body',
@@ -138,13 +138,30 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                     if match_events == 'yes' and search_spaces[m].lower() not in c: # if the search space (lowercase) is contained within the contrast_opts specified
                         print('Skipping {} search space for the {} contrast'.format(search_spaces[m], c))
                     else: 
-                        print('Defining fROI using top {} voxels within {} contrast'.format(top_nvox, c))
                         z_file = glob.glob(op.join(modelDir, '*_{}_zstat.nii.gz'.format(c)))
                         z_img = image.load_img(z_file)
-                        
+                                                
                         # mask contrast image with roi image
                         masked_img = image.math_img('img1 * img2', img1 = z_img, img2 = mask_bin)
                         masked_data = masked_img.get_fdata()
+                        
+                        if percent == 'yes':
+                            # calculate number of voxels within the search space - do this before removing nan voxels so all participants have the same number of voxels extracted
+                            search_space = mask_bin.get_fdata()
+                            nvox_mask = np.sum(search_space != 0)
+                            
+                            # calculate nvox as percent of mask size
+                            nvox = int(np.ceil(nvox_mask * top_nvox / 100))
+                            
+                            print('Defining fROI using top {} percent of voxels within {} contrast. Number of voxels in fROI: {}'.format(top_nvox, c, nvox))
+                            
+                        else:
+                            # nvox is set as the provided top_nvox value
+                            nvox = top_nvox
+                            print('Defining fROI using top {} voxels within {} contrast'.format(nvox, c))
+                            
+                        # get index of non-zero voxels within search space
+                        #zero_vox_inds = (search_space == 0)
                         
                         # set all voxels that fall outside the search space to nan
                         # this is done because the voxels will be ranked in descending order so negative values will be ranked after 0 values meaning that voxels outside the search space 
@@ -161,8 +178,8 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         #masked_img.to_filename(masked_img_file)
                         
                         # get top voxels
-                        masked_data_inds = (-masked_data).argsort(axis = None) # the negative ensures that values are returned in decending order
-                        masked_data[np.unravel_index(masked_data_inds[top_nvox:], masked_data.shape)] = np.nan # set voxels not in top_nvox to nan
+                        masked_data_inds = (-masked_data).argsort(axis = None) # the negative ensures that values are returned in descending order
+                        masked_data[np.unravel_index(masked_data_inds[nvox:], masked_data.shape)] = np.nan # set voxels not in nvox to nan
                         
                         # binarize top voxel mask
                         sub_froi = masked_data.copy()
@@ -174,8 +191,8 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         # save froi file
                         # could use roi_name_lower instead of search_spaces[m] to get all lowercase names
                         sub_froi = image.new_img_like(mask_bin, sub_froi) # create a new image of the same class as the initial image
-                        # sub_roi_file = op.join(froiDir, 'sub-{}_run-{:02d}_splithalf-{:02d}_{}-{}_{}_top{}.nii.gz'.format(sub, r, s, network, search_spaces[m], c, top_nvox)) # include network in file output name
-                        sub_roi_file = op.join(froiDir, 'sub-{}_task-{}_run-{:02d}_splithalf-{:02d}_{}_{}_top{}.nii.gz'.format(sub, task, r, s, search_spaces[m], c, top_nvox))
+                        # sub_roi_file = op.join(froiDir, 'sub-{}_run-{:02d}_splithalf-{:02d}_{}-{}_{}_top{}.nii.gz'.format(sub, r, s, network, search_spaces[m], c, nvox)) # include network in file output name
+                        sub_roi_file = op.join(froiDir, 'sub-{}_task-{}_run-{:02d}_splithalf-{:02d}_{}_{}_top{}.nii.gz'.format(sub, task, r, s, search_spaces[m], c, nvox))
                         sub_froi.to_filename(sub_roi_file)
 
 # define command line parser function
@@ -228,7 +245,7 @@ def main(argv=None):
     search_spaces=config_file.loc['search_spaces',1].replace(' ','').split(',')
     match_events=config_file.loc['match_events',1]
     template=config_file.loc['template',1]
-    top_nvox=int(config_file.loc['top_nvox',1])
+    top_nvox=config_file.loc['top_nvox',1]
     
     # lowercase contrast option to avoid case errors - allows flexibility in how users specify events in config and contrasts files
     contrast_opts = [c.lower() for c in contrast_opts]
@@ -255,6 +272,14 @@ def main(argv=None):
         file_1.write('The following search spaces were specified in the config file: {} \n'.format(search_spaces))
         file_1.write('The top {} voxels were selected for each search space within the contrast: {} \n'.format(top_nvox, contrast_opts))
 
+    # flag whether top n or top n % of voxels should be extracted and set value to integer
+    if top_nvox.endswith('-percent'):
+        percent = 'yes'
+        top_nvox = int(top_nvox.replace('-percent', ''))
+    else:
+        percent = 'no'
+        top_nvox = int(top_nvox)
+        
     # for each subject in the list of subjects
     for index, sub in enumerate(args.subjects):
         print('Defining fROIs for sub-{}'.format(sub))
@@ -272,7 +297,7 @@ def main(argv=None):
             sub_runs=list(map(int, sub_runs)) # convert to integers     
         
         # create a process_subject workflow with the inputs defined above
-        process_subject(args.projDir, sharedDir, resultsDir, sub, sub_runs, task, contrast_opts, splithalves, search_spaces, match_events, template, top_nvox)
+        process_subject(args.projDir, sharedDir, resultsDir, sub, sub_runs, task, contrast_opts, splithalves, search_spaces, match_events, template, top_nvox, percent)
 
 # execute code when file is run as script (the conditional statement is TRUE when script is run in python)
 if __name__ == '__main__':
