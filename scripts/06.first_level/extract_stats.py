@@ -108,7 +108,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         print('ERROR: unable to locate fROI file. Make sure a resultsDir is provided in the config file!')
                     else:
                         roi_name = m.split('fROI-')[1]
-                        roi_file = glob.glob(op.join('{}'.format(froi_prefix),'sub-{}_task-{}*{}*.nii.gz'.format(sub,task, roi_name)))
+                        roi_file = glob.glob(op.join('{}'.format(froi_prefix),'sub-{}_task-{}*{}_*.nii.gz'.format(sub, task, roi_name)))
                         roi_masks.append(roi_file)
                         print('Using {} fROI file from {}'.format(roi_name, roi_file))
                 
