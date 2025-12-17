@@ -102,7 +102,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         mni_file = glob.glob(op.join(resultsDir, 'sub-{}'.format(sub), 'preproc', 'run1', '*preproc_bold*.nii.gz'))[0]
                         
                         modelDir = combinedDir
-                        froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub))
+                        froi_prefix = op.join(resultsDir, '{}'.format(sub), 'frois', 'combined_runs')
 
                     if not froi_prefix:
                         print('ERROR: unable to locate fROI file. Make sure a resultsDir is provided in the config file!')
