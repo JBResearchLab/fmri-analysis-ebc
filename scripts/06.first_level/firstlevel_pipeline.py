@@ -10,8 +10,10 @@ Nesting of functions: main > argparser > process_subject > create_firstlevel_wor
 Requirement: BIDS dataset (including events.tsv), derivatives directory with fMRIPrep outputs, and modeling files
 
 """
+import sys
 import nipype.algorithms.modelgen as model
 from nipype.interfaces import fsl, ants
+from niflow.nipype1.workflows.fmri.fsl import create_susan_smooth
 from nipype.interfaces.base import Bunch
 from nipype import Workflow, Node, IdentityInterface, Function, DataSink, JoinNode, MapNode
 import os
@@ -19,7 +21,6 @@ import os.path as op
 import numpy as np
 import argparse
 from bids.layout import BIDSLayout
-from niflow.nipype1.workflows.fmri.fsl import create_susan_smooth
 import pandas as pd
 import glob
 import shutil
@@ -197,6 +198,7 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
     def process_data_files(sub, task, mni_file, event_file, timecourses, art_file, confound_file, regressor_opts, run_id, splithalf_id, TR, dropvols, nVols, outDir):
         import os
         import os.path as op
+        import math
         import pandas as pd
         from pandas.errors import EmptyDataError
         import numpy as np
@@ -291,7 +293,7 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
         # get middle volume to define halves
         midVol = int(nVols/2)
         # number of volumes to drop per run (drop 6s total: 3s from each run)
-        drop_nVols = int((6/TR)/2)
+        drop_nVols = int(math.ceil((6/TR)/2)) # int((6/TR)/2)
         
         # list of volumes to drop around midpoint (6s total, 3s on each side of midVol)
         droppedVols = np.arange(midVol-drop_nVols, midVol+drop_nVols, 1)
@@ -394,6 +396,53 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
         smooth.inputs.inputnode.fwhm = smoothing_kernel_size
         wf.connect(datasource, 'mni_mask', smooth, 'inputnode.mask_file')
         wf.connect(mni_split, 'roi_file', smooth, 'inputnode.in_files')
+
+    # define grand mean scaling function
+    def grand_mean_scaling(functional_data, mask_file):
+        from nipype.interfaces.fsl import BinaryMaths, ImageStats
+        
+        print('Grand mean scaling the data')
+        
+        # if list provided (i.e., smoothing node default output is a list)
+        if isinstance(functional_data, list):
+            functional_data = functional_data[0]
+        
+        # calculate global median (across time and voxels)
+        getmedian = ImageStats()
+        getmedian.inputs.in_file = functional_data
+        getmedian.inputs.mask_file = mask_file
+        getmedian.inputs.op_string = '-P 50' # median of non-zero voxels
+        #getmedian.inputs.op_string = '-M' # mean of non-zero voxels
+        calc_median = getmedian.run()
+        global_median = float(calc_median.outputs.out_stat)
+        
+        print('Calculated global median: {}'.format(global_median))
+        
+        # calculate scaling factor
+        scale_factor = 10000 / global_median
+        
+        print('Scaling factor: {}'.format(scale_factor))
+        
+        # applying the scaling (run will then have a mean ~10,000)
+        scaled = BinaryMaths()
+        scaled.inputs.in_file = functional_data
+        scaled.inputs.operation = 'mul'
+        scaled.inputs.operand_value = scale_factor
+        scale_run = scaled.run()
+        
+        return scale_run.outputs.out_file
+        
+    meanscaling = Node(Function(output_names=['out_file'],
+                                function=grand_mean_scaling), name='meanscaling')
+    
+    wf.connect(datasource, 'mni_mask', meanscaling, 'mask_file')
+    # pass data to meanscaling depending on whether smoothing was requested
+    if run_smoothing:
+    # pass smoothed output files as functional runs to meanscaling
+        wf.connect(smooth, 'outputnode.smoothed_files', meanscaling, 'functional_data')
+    else: 
+       # pass unsmoothed output files as functional runs to meanscaling
+        wf.connect(mni_split, 'roi_file', meanscaling, 'functional_data')
         
     # define model configuration function
     def gen_model_info(stimuli, events, modulators, timecourses, confounds, regressor_names):
@@ -487,14 +536,8 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
     
     print('Using a high pass filter cutoff of {}'.format(modelspec.inputs.high_pass_filter_cutoff))
     
-    # pass data to modelspec depending on whether smoothing was requested
-    if run_smoothing:
-        # pass smoothed output files as functional runs to modelspec
-        wf.connect(smooth, 'outputnode.smoothed_files', modelspec, 'functional_runs')
-    else: 
-       # pass unsmoothed output files as functional runs to modelspec
-        wf.connect(mni_split, 'roi_file', modelspec, 'functional_runs')
-            
+    # pass scaled data to modelspec                       
+    wf.connect(meanscaling, 'out_file', modelspec, 'functional_runs')                 
     if 'art' in regressor_opts:
         print('ART identified motion spikes will be used as nuisance regressors')
         wf.connect(splitdata, 'outlier_file', modelspec, 'outlier_files') # generated using rapidart in motion exclusions script
@@ -575,13 +618,9 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
     # after running, the outputs are collected into a list to pass to the next Node
     masker = MapNode(fsl.ApplyMask(), name='masker', iterfield=['in_file'])
     wf.connect(datasource, 'mni_mask', masker, 'mask_file')
-
-    # if smoothing was requested
-    if run_smoothing: 
-        wf.connect(smooth, 'outputnode.smoothed_files', masker, 'in_file')
-    else:
-        # if smoothing was not requested
-        wf.connect(mni_split, 'roi_file', masker, 'in_file')
+    
+    # pass scaled data to masker                     
+    wf.connect(meanscaling, 'out_file', masker, 'in_file')
 
     # configure GLM over design matrics
     glm = MapNode(fsl.FILMGLS(), name='filmgls', iterfield=['in_file'])
@@ -650,11 +689,13 @@ def create_firstlevel_workflow(projDir, derivDir, workDir, outDir,
                                           ('_splithalf_id_', '_splithalf'),
                                           ('run0', 'run1'),
                                           ('_smooth0/',''),
+                                           ('_maths','_scaled'),
                                           ('_roi',''),
                                           #('MNI152NLin2009cAsym_res-2_desc','MNI'),
                                           ('_filmgls0','')]
                                           
     # define where output files are saved
+    wf.connect(meanscaling, 'out_file', sinker, 'preproc.@scaled_data') # output scaled data for psc calculation
     wf.connect(gensubs, 'out', sinker, 'substitutions')
     wf.connect(mni_split, 'roi_file', sinker, 'preproc.@roi_file')
     if run_smoothing:
@@ -825,6 +866,9 @@ def argparser():
 
 # define main function that parses the config file and runs the functions defined above
 def main(argv=None):
+    # don't buffer messages
+    sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
+    
     # call argparser function that defines command line inputs
     parser = argparser()
     args = parser.parse_args(argv)   
