@@ -129,7 +129,7 @@ def create_timecourse_workflow(sharedDir, projDir, derivDir, workDir, outDir, su
         # define froi prefix if resultsDir was provided
         if resultsDir:
             # define aroi prefix
-            aroi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'arois', 'sub-{}_roi-'.format(sub))
+            aroi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'arois', 'sub-{}_'.format(sub))
             
             if splithalf_id != 0:                    
                     # ensure that the fROI from the *opposite* splithalf is picked up for timecourse extraction (e.g., timecourse from splithalf1 is extracted from fROI defined in splithalf2)
@@ -187,7 +187,6 @@ def create_timecourse_workflow(sharedDir, projDir, derivDir, workDir, outDir, su
                     print('ERROR: unable to locate aROI file. Make sure a resultsDir is provided in the config file!')
                 else:
                     roi_name = m.split('aROI-')[1].split('_')[0]
-                    roi_name = roi_name.lower()
                     roi_file = glob.glob(op.join('{}*{}*.nii.gz'.format(aroi_prefix, roi_name)))#[0]
                     roi_masks.append(roi_file)
                     print('Using {} aROI file from {}'.format(roi_name, roi_file))                  
