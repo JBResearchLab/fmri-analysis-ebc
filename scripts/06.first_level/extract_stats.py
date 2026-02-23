@@ -24,7 +24,7 @@ from nilearn.maskers import NiftiMasker
 import nilearn
 import shutil
 
-def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_opts, splithalves, mask_opts, match_events, template, extract_opt):
+def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_opts, splithalves, mask_opts, match_events, template, extract_opt, psc):
     
     # make output stats directory
     statsDir = op.join(resultsDir, 'sub-{}'.format(sub), 'stats')
@@ -47,6 +47,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
         runs_inter = [1] # don't iterate over runs
     else:
         combined = 'no'
+        runs_inter = runs # iterate over all provided runs
         
     # for each run
     for run_id in runs_inter:
@@ -217,7 +218,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         print('Extracting stats from {} mask within {} contrast'.format(mask_opts[r], c))
        
                         # psc file (if requested)
-                        if psc:
+                        if psc == 'yes':
                             # if not combined results
                             if combined == 'no':
                                 if splithalf_id != 0:                                
@@ -269,7 +270,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                             tcope_img = image.math_img('np.squeeze(img)', img=tcope_img)
                         
                         # remove the 4th singleton dimension from all files if extracting PSC (only 3 dimensions)
-                        if psc:
+                        if psc == 'yes':
                             zcope_img = image.math_img('np.squeeze(img)', img=zcope_img)
                             tcope_img = image.math_img('np.squeeze(img)', img=tcope_img)
                             psc_img = image.math_img('np.squeeze(img)', img=psc_img)
@@ -285,7 +286,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                         if extract_opt == 'mean': # if mean requested
                         
                             # if mean psc values were requested
-                            if psc:
+                            if psc == 'yes':
                                 masked_pscimg = image.math_img('img1 * img2', img1 = psc_img, img2 = mask_bin)
                                 masked_pscdata = masked_pscimg.get_fdata()
                                 mean_psc = np.nanmean(masked_pscdata[masked_pscdata != 0]) # psc values                             
@@ -309,7 +310,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                             
                             print('Mean z-stat within {}: {}'. format(mask_opts[r], mean_zval))
                             print('Mean t-stat within {}: {}'. format(mask_opts[r], mean_tval))
-                            if psc:
+                            if psc == 'yes':
                                 print('Mean percent signal change within {}: {}'. format(mask_opts[r], mean_psc))
                             
                             if splithalf_id != 0:
@@ -332,7 +333,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                                                        'mean_tval' : mean_tval,                                                     
                                                        'mean_zval' : mean_zval}, index=[0])
                             
-                            if psc:
+                            if psc == 'yes':
                                 df_row['mean_psc'] = mean_psc
                             
                             if not os.path.isfile(stats_file): # if the stats output file doesn't exist
@@ -347,7 +348,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                             # mask contrast image with roi image and return 2D array
                             masker = NiftiMasker(mask_img=mask_bin)
                             ## psc
-                            if psc:
+                            if psc == 'yes':
                                 masked_pscdata = masker.fit_transform(psc_img)
                             ## z-stats
                             masked_zdata = masker.fit_transform(zcope_img)
@@ -361,7 +362,7 @@ def process_subject(projDir, sharedDir, resultsDir, sub, runs, task, contrast_op
                             
                             # add columns with t-stats, run, task, split, and mask info
                             masked_df.insert(loc=0, column='t-stat', value=pd.DataFrame(masked_tdata).transpose())
-                            if psc:
+                            if psc == 'yes':
                                 masked_df.insert(loc=0, column='psc', value=pd.DataFrame(masked_pscdata).transpose())
                             masked_df.insert(loc=0, column='voxel_index', value=range(len(masked_df)))
                             masked_df.insert(loc=0, column='mask', value=mask_opts[r])
@@ -438,7 +439,14 @@ def main(argv=None):
         splithalves = [1,2]
     else:
         splithalves = [0]
-
+        
+    # flag whether percent signal change should be extracted
+    if extract_opt.endswith('-psc'):
+        psc = 'yes'
+        extract_opt = extract_opt.replace('-psc', '')
+    else:
+        psc = 'no'
+        
     # print if results directory is not specified or found
     if resultsDir == None:
         raise IOError('No resultsDir was specified in config file, but is required to extract stats!')
@@ -463,7 +471,7 @@ def main(argv=None):
             sub_runs=list(map(int, sub_runs)) # convert to integers
         
         # create a process_subject workflow with the inputs defined above
-        process_subject(args.projDir, sharedDir, resultsDir, sub, sub_runs, task, contrast_opts, splithalves, mask_opts, match_events, template, extract_opt)
+        process_subject(args.projDir, sharedDir, resultsDir, sub, sub_runs, task, contrast_opts, splithalves, mask_opts, match_events, template, extract_opt, psc)
 
 # execute code when file is run as script (the conditional statement is TRUE when script is run in python)
 if __name__ == '__main__':
