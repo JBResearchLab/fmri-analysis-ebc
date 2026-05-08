@@ -121,48 +121,70 @@ def create_timecourse_workflow(sharedDir, projDir, derivDir, workDir, outDir, su
         else:
             print('No smoothDir specified in the config file. Using fMRIPrep outputs.')
        
-        # check if an froiDir was provided, look in the resultsDir if not
-        if froiDir == None:
-            froiDir = resultsDir
-        
-        # define combined froiDir for this subject and check if it exists
-        combinedDir = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'combined_runs')
-        if op.exists(combinedDir):
-            combined = 'yes'
-        else:
-            combined = 'no'
-        
-        # define roi prefixes if resultsDir or froiDir was provided        
+    # define roi prefixes if resultsDir was provided
         if resultsDir:
             # define aroi prefix
             aroi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'arois', 'sub-{}_'.format(sub))
-        
-        if froiDir:
-            if splithalf_id != 0 and combined == 'no':                
-                # ensure that the fROI from the *opposite* splithalf is picked up for timecourse extraction (e.g., timecourse from splithalf1 is extracted from fROI defined in splithalf2)
+
+        # determine fROI prefix
+        if froiDir == None:
+            print('No froiDir was specified in config file. Will look for fROIs in resultsDir.')
+
+            # define combined directory in resultsDir
+            combinedDir = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', 'combined_runs')
+
+            # determine whether fROIs were combined
+            if op.exists(combinedDir):
+                combined = 'yes'
+            else:
+                combined = 'no'
+
+            # define fROI prefix depending on whether data were splithalf and/or combined
+            if splithalf_id != 0 and combined == 'no':
+
+                # ensure opposite splithalf fROI is used
                 if splithalf_id == 1:
                     print('Will skip signal extraction in splithalf{} for any fROIs defined in splithalf{}'.format(splithalf_id, splithalf_id))
-                    froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', '{}_splithalf2'.format(run_name))
-                        
+                    froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', '{}_splithalf2'.format(run_name))
+
                 if splithalf_id == 2:
                     print('Will skip signal extraction in splithalf{} for any fROIs defined in splithalf{}'.format(splithalf_id, splithalf_id))
-                    froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', '{}_splithalf1'.format(run_name))
-            
+                    froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', '{}_splithalf1'.format(run_name))
+
             elif splithalf_id != 0 and combined == 'yes':
-                # ensure that the fROI from the *opposite* splithalf is picked up for timecourse extraction (e.g., timecourse from splithalf1 is extracted from fROI defined in splithalf2)
+
+                # ensure opposite splithalf fROI is used
                 if splithalf_id == 1:
                     print('Will skip signal extraction in splithalf{} for any fROIs defined in splithalf{}'.format(splithalf_id, splithalf_id))
-                    froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'combined_runs', 'splithalf2')
-                        
+                    froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', 'combined_runs', 'splithalf2')
+
                 if splithalf_id == 2:
                     print('Will skip signal extraction in splithalf{} for any fROIs defined in splithalf{}'.format(splithalf_id, splithalf_id))
-                    froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'combined_runs', 'splithalf1')
-                            
+                    froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', 'combined_runs', 'splithalf1')
+
             elif splithalf_id == 0 and combined == 'no':
-                froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', '{}'.format(run_name))
-            
-            elif splithalf_id == 0 and combined == 'yes':    
-                froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'combined_runs')
+                froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', '{}'.format(run_name))
+
+            elif splithalf_id == 0 and combined == 'yes':
+                froi_prefix = op.join(resultsDir, 'sub-{}'.format(sub), 'frois', 'combined_runs')
+
+        # if an froiDir was provided
+        else:
+            if not op.exists(froiDir):
+                raise IOError('fROI directory {} not found.'.format(froiDir))
+
+            print('Will look for fROIs in froiDir: {}'.format(froiDir))
+
+            # define combined froiDir for this subject
+            combinedfroiDir = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'combined_runs')
+
+            # determine whether fROIs were combined
+            if op.exists(combinedfroiDir):
+                froi_prefix = combinedfroiDir
+
+            else:
+                # assumes external fROIs are from a single run localizer
+                froi_prefix = op.join(froiDir, 'sub-{}'.format(sub), 'frois', 'run1')
                 
         # define preproc directory depending on whether splithalf was requested
         if splithalf_id != 0:
