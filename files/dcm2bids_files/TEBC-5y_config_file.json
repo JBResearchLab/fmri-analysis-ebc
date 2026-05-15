@@ -153,9 +153,8 @@
             14
          ],
          "criteria": {
-            "SidecarFilename": "*_gre_field_mapping_3mm_*_e*",
-            "EchoTime": 0.00492,
-            "ImageType": ["ORIGINAL", "PRIMARY", "M", "ND"]
+            "SidecarFilename": "*_gre_field_mapping_3mm_*_e1*",
+            "EchoTime": 0.00492
          }
       },
       {
@@ -167,9 +166,8 @@
             14
          ],
          "criteria": {
-            "SidecarFilename": "*_gre_field_mapping_3mm_*_e*",
-            "EchoTime": 0.00738,
-            "ImageType": ["ORIGINAL", "PRIMARY", "M", "ND"]
+            "SidecarFilename": "*_gre_field_mapping_3mm_*_e2.*",
+            "EchoTime": 0.00738
          }
       },
       {
