@@ -19,7 +19,7 @@ import shutil
 def correlate_rdms(projDir, sharedDir, dataset, resultsDir, sub, mask_opts, subject_rdms, model_rdms):
     
     # define rsa directory and check that it exists
-    rsaDir = op.join(resultsDir, '{}'.format(sub), 'rsa')
+    rsaDir = op.join(resultsDir, 'sub-{}'.format(sub), 'rsa')
     rdmDir = op.join(rsaDir, 'neural_rdms')
     
     if not op.exists(rdmDir):
@@ -59,7 +59,7 @@ def correlate_rdms(projDir, sharedDir, dataset, resultsDir, sub, mask_opts, subj
             # if model file not found in project directory, look for it in the shared directory
             if not model_file:
                 model_file = glob.glob(op.join(sharedDir, 'model_rdms', '{}'.format(dataset), 'model_RDM-{}.csv'.format(m)))
-            
+                
             # if group RDM file is still not found, raise error
             if not model_file:
                 raise IOError('Group model RDM file not found!')
@@ -82,7 +82,8 @@ def correlate_rdms(projDir, sharedDir, dataset, resultsDir, sub, mask_opts, subj
         
         # vectorise and store column and run order
         models[m] = {'model': model_rdms[index],
-                     'vector': vectorise_rdm(rdm),
+                     'vector_diag': vectorise_rdm(rdm, include_diag='yes'),
+                     'vector_nodiag': vectorise_rdm(rdm, include_diag='no'),
                      'column_order': rdm.columns.tolist(),
                      'row_order': rdm.index.tolist()}
     
@@ -92,65 +93,107 @@ def correlate_rdms(projDir, sharedDir, dataset, resultsDir, sub, mask_opts, subj
     # loop over ROIs 
     for roi in mask_opts:
         # read in averaged neural RDMs for this ROI
-        correl_rdm_file = op.join(rdmDir, '{}_{}_correlation_averaged_rdm.csv'.format(sub, roi))
-        euclid_rdm_file = op.join(rdmDir, '{}_{}_euclidean_averaged_rdm.csv'.format(sub, roi))
-        correl_rdm = pd.read_csv(correl_rdm_file, sep=',')
-        euclid_rdm = pd.read_csv(euclid_rdm_file, sep=',')
+        cor_rdm_file = op.join(rdmDir, 'sub-{}_{}_correlation_averaged_rdm.csv'.format(sub, roi))
+        euc_rdm_file = op.join(rdmDir, 'sub-{}_{}_euclidean_averaged_rdm.csv'.format(sub, roi))
+        sqeuc_rdm_file = op.join(rdmDir, 'sub-{}_{}_squared_euclidean_averaged_rdm.csv'.format(sub, roi))
+        cor_rdm = pd.read_csv(cor_rdm_file, sep=',')
+        euc_rdm = pd.read_csv(euc_rdm_file, sep=',')
+        sqeuc_rdm = pd.read_csv(sqeuc_rdm_file, sep=',')
         
         # add row names to ensure the same order as model RDMs
-        correl_rdm.index = correl_rdm.columns
-        euclid_rdm.index = euclid_rdm.columns
-                
+        cor_rdm.index = cor_rdm.columns
+        euc_rdm.index = euc_rdm.columns
+        sqeuc_rdm.index = sqeuc_rdm.columns
+        
         # loop over models      
         for m in models:
             # force neural RDMs to have the same column and row order as the model (which has been forced to be symmetric)
             order = models[m]['row_order']
-            correl_aligned = correl_rdm.loc[order, order]
-            euclid_aligned = euclid_rdm.loc[order, order]
+            cor_aligned = cor_rdm.loc[order, order]
+            euc_aligned = euc_rdm.loc[order, order]
+            sqeuc_aligned = sqeuc_rdm.loc[order, order]
             
             # vectorise neural RDMs
-            correl_vec = vectorise_rdm(correl_aligned)
-            euclid_vec = vectorise_rdm(euclid_aligned)
+            cor_vec_diag = vectorise_rdm(cor_aligned, include_diag='yes')
+            cor_vec_nodiag = vectorise_rdm(cor_aligned, include_diag='no')
+            euc_vec_diag = vectorise_rdm(euc_aligned, include_diag='yes')        
+            euc_vec_nodiag = vectorise_rdm(euc_aligned, include_diag='no')
+            sqeuc_vec_diag = vectorise_rdm(sqeuc_aligned, include_diag='yes')        
+            sqeuc_vec_nodiag = vectorise_rdm(sqeuc_aligned, include_diag='no')
             
             # extract model vector
-            model_vec = models[m]['vector']
+            model_vec_diag = models[m]['vector_diag']
+            model_vec_nodiag = models[m]['vector_nodiag']
             
             # Kendall's tau
             # the scipy stats function defaults to tau-b and does not have a tau-a implementation
-            tau_b_correl, p_correl = scipy.stats.kendalltau(correl_vec, model_vec)
-            tau_b_euclid, p_euclid = scipy.stats.kendalltau(euclid_vec, model_vec)
+            ## including diagonal in calculation
+            tau_b_cor_diag, p_cor_diag = scipy.stats.kendalltau(cor_vec_diag, model_vec_diag)
+            tau_b_euc_diag, p_euc_diag = scipy.stats.kendalltau(euc_vec_diag, model_vec_diag)
+            tau_b_sqeuc_diag, p_sqeuc_diag = scipy.stats.kendalltau(sqeuc_vec_diag, model_vec_diag)
+            
+            ## excluding diagonal in calculation
+            tau_b_cor_nodiag, p_cor_nodiag = scipy.stats.kendalltau(cor_vec_nodiag, model_vec_nodiag)
+            tau_b_euc_nodiag, p_euc_nodiag = scipy.stats.kendalltau(euc_vec_nodiag, model_vec_nodiag)
+            tau_b_sqeuc_nodiag, p_sqeuc_nodiag = scipy.stats.kendalltau(sqeuc_vec_nodiag, model_vec_nodiag)
             
             # tau-a using custom function (should return the same values as tau-b in most cases)
-            tau_a_correl = kendall_tau_a(correl_vec, model_vec)
-            tau_a_euclid = kendall_tau_a(euclid_vec, model_vec)
+            ## including diagonal in calculation
+            tau_a_cor_diag = kendall_tau_a(cor_vec_diag, model_vec_diag)
+            tau_a_euc_diag = kendall_tau_a(euc_vec_diag, model_vec_diag)
+            tau_a_sqeuc_diag = kendall_tau_a(sqeuc_vec_diag, model_vec_diag)
+            
+            ## excluding diagonal in calculation
+            tau_a_cor_nodiag = kendall_tau_a(cor_vec_nodiag , model_vec_nodiag)
+            tau_a_euc_nodiag = kendall_tau_a(euc_vec_nodiag , model_vec_nodiag)
+            tau_a_sqeuc_nodiag = kendall_tau_a(sqeuc_vec_nodiag , model_vec_nodiag)
             
             # save correlation results
             results.append({'sub': sub,
                             'roi': roi,
                             'model': models[m]['model'],
                             'metric': 'correlation',
-                            'tau_a': tau_a_correl,
-                            'tau_b': tau_b_correl})
+                            'tau_a_diag': tau_a_cor_diag,
+                            'tau_a_nodiag': tau_a_cor_nodiag,
+                            'tau_b_diag': tau_b_cor_diag,
+                            'tau_b_nodiag': tau_b_cor_nodiag})
         
             # save euclidean results
             results.append({'sub': sub,
                             'roi': roi,
                             'model': models[m]['model'],
                             'metric': 'euclidean',
-                            'tau_a': tau_a_euclid,
-                            'tau_b': tau_b_euclid})
+                            'tau_a_diag': tau_a_euc_diag,
+                            'tau_a_nodiag': tau_a_euc_nodiag,
+                            'tau_b_diag': tau_b_euc_diag,
+                            'tau_b_nodiag': tau_b_euc_nodiag})
+                            
+            # save squared euclidean results
+            results.append({'sub': sub,
+                            'roi': roi,
+                            'model': models[m]['model'],
+                            'metric': 'squared_euclidean',
+                            'tau_a_diag': tau_a_sqeuc_diag,
+                            'tau_a_nodiag': tau_a_sqeuc_nodiag,
+                            'tau_b_diag': tau_b_sqeuc_diag,
+                            'tau_b_nodiag': tau_b_sqeuc_nodiag})
 
     # save outputs
     results_df = pd.DataFrame(results)
-    results_file = op.join(rsaDir, '{}-rsa_results.csv'.format(sub))
+    results_file = op.join(rsaDir, 'sub-{}-rsa_results.csv'.format(sub))
     results_df.to_csv(results_file, index=False)
     print('Saved RSA results to: {}'.format(results_file))
     
 # define function to vectorise the RDMs
-def vectorise_rdm(dat):
-    # returns the upper triangle (excluding diagonal) as vector
-    # k=0  will include diagonal
-    return dat.values[np.triu_indices_from(dat, k=1)]
+def vectorise_rdm(dat, include_diag):
+    # k=0  will include diagonal; k=1 will exclude diagonal
+    if include_diag == 'yes':
+        diag = 0
+    if include_diag == 'no':
+        diag = 1
+        
+    # returns the upper triangle as vector
+    return dat.values[np.triu_indices_from(dat, k=diag)]
 
 # define function to calculate Kendall's tau-a
 def kendall_tau_a(neural_vec, model_vec):
@@ -233,6 +276,17 @@ def main(argv=None):
     
     if not op.exists(resultsDir):
         raise IOError('Results directory {} not found.'.format(resultsDir))
+    
+    # identify analysis README file
+    readme_file=op.join(resultsDir, 'README.txt')
+    
+    # add config details to project README file
+    with open(readme_file, 'a') as file_1:
+        file_1.write('\n')
+        file_1.write('Neural and model RDMs were correlated using the correlate_rdms.py script and options specified in the config file: {} \n'.format(args.config))
+        file_1.write('The following model RDMs were evaluated: {} \n'.format(model_rdms))
+        file_1.write('RDMs were compared for the following ROIs: {} \n'.format(mask_opts))
+        file_1.write('Subject RDMs: {} \n'.format(subject_rdms))
         
     # for each subject in the list of subjects
     for index, sub in enumerate(args.subjects):

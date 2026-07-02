@@ -15,6 +15,9 @@ import os
 from itertools import combinations
 
 def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm):
+
+    # set random seed
+    np.random.seed(0)
     
     # check that subject list includes at least 2 subjects
     if len(subjects) < 2:
@@ -30,12 +33,14 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
     # initialise ROI dictionaries where vectorised subject data will be stored
     roi_data_cor = {}
     roi_data_euc = {}
+    roi_data_sqeuc = {}
 
     # read in all subject RDMs and save as stacked dataframe
     for roi in mask_opts:
         # initalise subject RDMs dataframes
         cor_rdms = []
         euc_rdms = []
+        sqeuc_rdms = []
         
         # for each subject in the list of subjects
         for sub in subjects:
@@ -48,14 +53,17 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
             # read in averaged neural RDMs for this ROI
             sub_cor_file = op.join(rdmDir, 'sub-{}_{}_correlation_averaged_rdm.csv'.format(sub, roi))
             sub_euc_file = op.join(rdmDir, 'sub-{}_{}_euclidean_averaged_rdm.csv'.format(sub, roi))
+            sub_sqeuc_file = op.join(rdmDir, 'sub-{}_{}_squared_euclidean_averaged_rdm.csv'.format(sub, roi))
             
             # vectorise and append subject RDM to list of files (this includes the diagonal)
-            cor_rdms.append(vectorise_rdm(sub_cor_file, diag=0))
-            euc_rdms.append(vectorise_rdm(sub_euc_file, diag=0))
+            cor_rdms.append(vectorise_rdm(sub_cor_file, include_diag='yes'))
+            euc_rdms.append(vectorise_rdm(sub_euc_file, include_diag='yes'))
+            sqeuc_rdms.append(vectorise_rdm(sub_sqeuc_file, include_diag='yes'))
             
         # stack ROI RDMs into dictionary with ROI label
         roi_data_cor[roi] = np.vstack(cor_rdms)
         roi_data_euc[roi] = np.vstack(euc_rdms)
+        roi_data_sqeuc[roi] = np.vstack(sqeuc_rdms)
     
     # define all possible ROI pairs
     roi_pairs = list(combinations(mask_opts, 2))
@@ -92,6 +100,7 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
             # calculate difference scores (and return within and across variables for data checking)  
             within_cor, across_cor, diff_cor = calc_diff_score(roi_data_cor, roi1, roi2, group1, group2)
             within_euc, across_euc, diff_euc = calc_diff_score(roi_data_euc, roi1, roi2, group1, group2)
+            within_sqeuc, across_sqeuc, diff_sqeuc = calc_diff_score(roi_data_sqeuc, roi1, roi2, group1, group2)
             
             # append iteration outputs
             # correlation
@@ -112,6 +121,15 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
                                  'across': across_euc,
                                  'difference': diff_euc})
             
+            # squared euclidean
+            iter_results.append({'roi1': roi1,
+                                 'roi2': roi2,
+                                 'iteration_num': i,
+                                 'metric': 'squared_euclidean',
+                                 'within': within_sqeuc,
+                                 'across': across_sqeuc,
+                                 'difference': diff_sqeuc})
+            
         # convert iteration results to dataframe
         iter_df = pd.DataFrame(iter_results)
         
@@ -131,6 +149,7 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
         # extract difference scores
         diff_cor_vec = iter_df.query("metric == 'correlation'")['difference'].values
         diff_euc_vec = iter_df.query("metric == 'euclidean'")['difference'].values
+        diff_sqeuc_vec = iter_df.query("metric == 'squared_euclidean'")['difference'].values
         
         for p in range(int(nperm)):
             # generate a random vector the same length as the difference score vector (i.e., number of iterations) of 1s and -1s
@@ -150,6 +169,13 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
                                  'perm_num': p,
                                  'metric': 'euclidean',
                                  'perm_discrim_index': np.mean(diff_euc_vec * signs)})
+                                 
+            # squared euclidean
+            perm_results.append({'roi1': roi1,
+                                 'roi2': roi2,
+                                 'perm_num': p,
+                                 'metric': 'squared_euclidean',
+                                 'perm_discrim_index': np.mean(diff_sqeuc_vec * signs)})
         
         # convert permutation results to dataframe
         perm_df = pd.DataFrame(perm_results)
@@ -181,12 +207,17 @@ def calc_roi_reliability(projDir, resultsDir, subjects, mask_opts, niter, nperm)
     results_df.to_csv(op.join(relDir, 'splithalf-results.csv'), index=False)
 
 # define function to vectorise the RDMs
-def vectorise_rdm(rdm_file, diag):
+def vectorise_rdm(rdm_file, include_diag):
+    # k=0  will include diagonal; k=1 will exclude diagonal
+    if include_diag == 'yes':
+        diag = 0
+    if include_diag == 'no':
+        diag = 1
+    
     # load rdm
     rdm_mat = pd.read_csv(rdm_file, sep=',')
     
     # returns the upper triangle as vector
-    # k=0 will include diagonal; k=1 will exclude diagonal
     return rdm_mat.values[np.triu_indices_from(rdm_mat, k=diag)]
     
 # define function to calculate Kendall's tau-a
@@ -299,6 +330,17 @@ def main(argv=None):
     if not op.exists(resultsDir):
         raise IOError('Results directory {} not found.'.format(resultsDir))
     
+    # identify analysis README file
+    readme_file=op.join(resultsDir, 'README.txt')
+    
+    # add config details to project README file
+    with open(readme_file, 'a') as file_1:
+        file_1.write('\n')
+        file_1.write('ROI RDM reliability was assessed using the check_roi_reliability.py script and options specified in the config file: {} \n'.format(args.config))
+        file_1.write('The following ROIs were checked: {} \n'.format(mask_opts))
+        file_1.write('Number of iterations: {} \n'.format(niter))
+        file_1.write('Number of permutations: {} \n'.format(nperm))
+        
     # create a calc roi workflow with the inputs defined above
     calc_roi_reliability(args.projDir, resultsDir, args.subjects, mask_opts, niter, nperm)
     
