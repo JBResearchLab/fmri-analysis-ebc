@@ -208,12 +208,15 @@ def process_subject(projDir, sharedDir, resultsDir, froiDir, sub, runs, folds, t
                     else:
                         if template is not None:
                             template_name = template.split('_')[0] # take full template name
-                            roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}'.format(template_name), '{}_*.nii.gz'.format(m)))[0]
+                            roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}'.format(template_name), '{}_*.nii.gz'.format(m)))
+                            
+                            if not roi_file:
+                                roi_file = glob.glob(op.join(projDir, 'files', 'ROIs', '{}'.format(template_name), '{}_*.nii.gz'.format(m)))
                         else:
-                            roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}_*.nii.gz'.format(m)))[0]
-                        
-                        roi_masks.append(roi_file)
-                        print('Using {} ROI file from {}'.format(m, roi_file))
+                            roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}_*.nii.gz'.format(m)))
+                            
+                            if not roi_file:
+                                roi_file = glob.glob(op.join(projDir, 'files', 'ROIs', '{}_*.nii.gz'.format(m)))
                         
             print('Model directory: {}'.format(modelDir))
             
