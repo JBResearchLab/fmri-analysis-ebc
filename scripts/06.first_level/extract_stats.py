@@ -196,13 +196,10 @@ def process_subject(projDir, sharedDir, resultsDir, froiDir, sub, runs, folds, t
                     
                     # if an anatomical ROI was specified
                     elif 'aROI' in m:
-                        if not op.exists(aroi_prefix):
-                            print('ERROR: unable to locate aROI file. Make sure a resultsDir is provided in the config file!')
-                        else:
-                            roi_name = m.split('aROI-')[1].split('_')[0]
-                            roi_file = glob.glob(op.join('{}*{}*.nii.gz'.format(aroi_prefix, roi_name)))#[0]
-                            roi_masks.append(roi_file)
-                            print('Using {} aROI file from {}'.format(roi_name, roi_file))  
+                        roi_name = m.split('aROI-')[1].split('_')[0]
+                        roi_file = glob.glob(op.join('{}*{}*.nii.gz'.format(aroi_prefix, roi_name)))#[0]
+                        roi_masks.append(roi_file)
+                        print('Using {} aROI file from {}'.format(roi_name, roi_file))  
                     
                     # if other ROI was specified
                     else:
@@ -217,6 +214,9 @@ def process_subject(projDir, sharedDir, resultsDir, froiDir, sub, runs, folds, t
                             
                             if not roi_file:
                                 roi_file = glob.glob(op.join(projDir, 'files', 'ROIs', '{}_*.nii.gz'.format(m)))
+                        
+                        roi_masks.append(roi_file[0])
+                        print('Using {} ROI file from {}'.format(m, roi_file))
                         
             print('Model directory: {}'.format(modelDir))
             
