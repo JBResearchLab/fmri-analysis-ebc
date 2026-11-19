@@ -91,30 +91,29 @@ resultsDir="${resultsDir%$'\r'}"
 
 # display subjects
 echo
-echo "Deleting firstlevel modelling outputs in" ${resultsDir} "for..."
+echo "Deleting firstlevel modeling outputs in" ${resultsDir} "for..."
 echo "${subjs}"
 echo
 
-# search for model directories to clean up
-for dir in $(ls -d ${resultsDir}/sub-*)
+# iterate for all subjects in the text file
+while read p
 do
-	if [ -d ${dir%/}/model ]
-	then
-		echo "Deleting ${dir%/}/model"
-		
-		rm -r ${dir%/}/model
+	sub=` basename ${p} | awk -F- '{print $NF}' `
+	
+	# search for model directories to clean up
+	if [ -d ${resultsDir}/sub-${sub}/model ]
+		then
+			echo "Deleting ${resultsDir}/sub-${sub}/model"
+			
+			rm -r ${resultsDir}/sub-${sub}/model
 	fi
 
-done
-
-# search for design directories to clean up
-for dir in $(ls -d ${resultsDir}/sub-*)
-do
-	if [ -d ${dir%/}/design ]
-	then
-		echo "Deleting ${dir%/}/design"
-		
-		rm -r ${dir%/}/design
+	# search for design directories to clean up
+	if [ -d ${resultsDir}/sub-${sub}/design ]
+		then
+			echo "Deleting ${resultsDir}/sub-${sub}/design"
+			
+			rm -r ${resultsDir}/sub-${sub}/design
 	fi
-
-done
+	
+done <$2
