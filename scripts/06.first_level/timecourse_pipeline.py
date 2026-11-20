@@ -229,13 +229,6 @@ def create_timecourse_workflow(sharedDir, projDir, derivDir, workDir, outDir, su
                     roi_masks.append(roi_file)
                     print('Using {} fROI file from {}'.format(roi_name, roi_file))
             
-            # if group ROI was specified
-            elif 'group' in m:
-                roi_name = m.split('group-')[1]
-                roi_file = glob.glob(op.join(projDir, 'files', 'ROIs' , '{}_*.nii.gz'.format(roi_name)))[0]
-                roi_masks.append(roi_file)
-                print('Using {} group defined file from {}'.format(roi_name, roi_file))  
-            
             # if a freesurfer ROI was specified
             elif 'FS' in m:
                 roi_name = m.split('FS-')[1]
@@ -252,14 +245,23 @@ def create_timecourse_workflow(sharedDir, projDir, derivDir, workDir, outDir, su
                     roi_file = glob.glob(op.join('{}*{}*.nii.gz'.format(aroi_prefix, roi_name)))#[0]
                     roi_masks.append(roi_file)
                     print('Using {} aROI file from {}'.format(roi_name, roi_file))                
+            
             # if any other ROI was specified
             else:
                 if template is not None:
                     #template_name = template[:6] # take first 6 characters
                     template_name = template.split('_')[0] # take full template name
                     roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}'.format(template_name), '{}_*.nii.gz'.format(m)))[0]
+                
+                    if not roi_file:
+                        roi_file = glob.glob(op.join(projDir, 'files', 'ROIs', '{}'.format(template_name), '{}_*.nii.gz'.format(m)))
+                
                 else:
                     roi_file = glob.glob(op.join(sharedDir, 'ROIs', '{}*.nii.gz'.format(m)))[0]
+                    
+                    if not roi_file:
+                        roi_file = glob.glob(op.join(projDir, 'files', 'ROIs', '{}_*.nii.gz'.format(m)))
+                
                 
                 roi_masks.append(roi_file)
                 print('Using {} ROI file from {}'.format(m, roi_file)) 
